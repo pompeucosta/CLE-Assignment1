@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "stdlib.h": "c",
+        "monitor.h": "c",
+        "stdarg.h": "c"
+    }
+}
