@@ -1,12 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
-
-#define SUCCESS 0
-#define FAILURE 1
-
-#define TRUE 1
-#define FALSE 0
+#include <stdbool.h>
 
 #define MAX_BUFFER_SIZE 8000
 
@@ -86,7 +81,7 @@ uint32_t getUTF8Character(char* buffer,uint32_t bufferLen,uint32_t startPos,uint
     return character;
 }
 
-int removeLowercaseUTF8Accent(uint32_t utfCharacter,uint32_t* pConvertedCharacter) {
+void removeLowercaseUTF8Accent(uint32_t utfCharacter,uint32_t* pConvertedCharacter) {
     #define a_lowerbound 0xC3A0
     #define a_upperbound 0xC3A3
 
@@ -106,53 +101,49 @@ int removeLowercaseUTF8Accent(uint32_t utfCharacter,uint32_t* pConvertedCharacte
 
     if(utfCharacter >= a_lowerbound && utfCharacter <= a_upperbound) {
         *pConvertedCharacter = 'a';
-        return SUCCESS;
+        return;
     }
     
     if(utfCharacter >= e_lowerbound && utfCharacter <= e_upperbound) {
         *pConvertedCharacter = 'e';
-        return SUCCESS;
+        return;
     }
     
     if(utfCharacter >= i_lowerbound && utfCharacter <= i_upperbound) {
         *pConvertedCharacter = 'i';
-        return SUCCESS;
+        return;
     }
     
     if(utfCharacter >= o_lowerbound && utfCharacter <= o_upperbound) {
         *pConvertedCharacter = 'o';
-        return SUCCESS;
+        return;
     }
     
     if(utfCharacter >= u_lowerbound && utfCharacter <= u_upperbound) {
         *pConvertedCharacter = 'u';
-        return SUCCESS;
+        return;
     }
     
     if(utfCharacter == c_cedilha) {
         *pConvertedCharacter = 'c';
-        return SUCCESS;
+        return;
     }
-
-    return FAILURE;
 }
 
-int removeUTF8Accent(uint32_t utfCharacter,uint32_t* pConvertedCharacter) {
-    uint32_t character;
-    int code = removeLowercaseUTF8Accent(utfCharacter,&character);
+void removeUTF8Accent(uint32_t utfCharacter,uint32_t* pConvertedCharacter) {
+    uint32_t character = utfCharacter;
 
-    if(code == SUCCESS) {
+    removeLowercaseUTF8Accent(utfCharacter,&character);
+    if(character != utfCharacter) {
         *pConvertedCharacter = character;
-        return SUCCESS;
+        return;
     }
 
-    code = removeLowercaseUTF8Accent(utfCharacter + 0x0020,&character);
-    if(code == SUCCESS) {
+    removeLowercaseUTF8Accent(utfCharacter + 0x0020,&character);
+    if(character != utfCharacter) {
         *pConvertedCharacter = character;
-        return SUCCESS;
+        return;
     }
-
-    return FAILURE;
 }
 
 uint32_t lowercase(uint32_t character) {
@@ -163,63 +154,84 @@ uint32_t lowercase(uint32_t character) {
     return character;
 }
 
-uint8_t isSeparationCharacter(uint32_t character) {
+bool isSeparationCharacter(uint32_t character) {
     if(character == ' ' || character == 0x9 || character == '\n' || character == '\r') {
-        return TRUE;
+        return true;
     }
 
     if(character == '-' || character == '"' || character == 0xE2809C || character == 0xe2809D || character == '[' || character == ']' || character == '(' || character == ')') {
-        return TRUE;
+        return true;
     }
 
     if(character == '.' || character == ',' || character == ':' || character == ';' || character == '?' || character == '!' || character == 0xE28093 || character == 0xE280A6) {
-        return TRUE;
+        return true;
     }
 
-    return FALSE;
+    return false;
 }
 
-int isAlphanumericOrUnderscore(uint32_t character) {
+bool isAlphanumericOrUnderscore(uint32_t character) {
     if(character >= 97 && character <= 122)
-        return TRUE;
+        return true;
 
     if(character >= 48 && character <= 57)
-        return TRUE;
+        return true;
 
     if(character == '_')
-        return TRUE;
+        return true;
 
-    return FALSE;
+    return false;
 }
 
-uint32_t reduceToLastFullWord(char* buffer,uint32_t bufferSize) {
-    uint32_t bytesReadOnLastFullWord = 0;
-    uint32_t totalBytesRead = 0;
-    uint32_t character = 0;
-    uint8_t bytesRead = 0;
-    uint8_t insideWord = FALSE;
+bool getPosOfNextFullWord(char* pBuffer,uint32_t bufferSize,uint32_t start,uint32_t* pWordStartPos,uint32_t* pWordLen) {
+    uint32_t character,converted,bytesRead = 0,i;
+    bool insideWord = false;
+    *pWordLen = 0;
 
-    while(totalBytesRead < bufferSize) {
-        character = getUTF8Character(buffer,bufferSize,totalBytesRead,&bytesRead);
-        totalBytesRead += bytesRead;
-        uint32_t converted = character;
+    for(i = start; i < bufferSize; i += bytesRead) {
+        character = getUTF8Character(pBuffer,bufferSize,i,&bytesRead);
+        converted = character;
         removeUTF8Accent(character,&converted);
         converted = lowercase(converted);
 
-        if(insideWord == FALSE) {
-            if(isAlphanumericOrUnderscore(converted) == TRUE) {
-                insideWord = TRUE;
+        if(!insideWord) {
+            if(isAlphanumericOrUnderscore(converted)) {
+                insideWord = true;
+                *pWordStartPos = i;
             }
         }
         else {
-            if(isSeparationCharacter(converted) == TRUE) {
-                insideWord = FALSE;
-                bytesReadOnLastFullWord = totalBytesRead - bytesRead;
+            if(isSeparationCharacter(converted)) {   
+                i += bytesRead; 
+                break;
+            }
+            else{
+                (*pWordLen) += bytesRead;
             }
         }
     }
 
-    return totalBytesRead - bytesReadOnLastFullWord;
+    return i >= bufferSize;
+}
+
+uint32_t reduceToLastFullWord(char* pBuffer,uint32_t bufferSize) {
+    uint32_t wordStartPos = 0,wordLen = 0,totalBytesLen = 0,tempWordStartPos,tempWordLen;
+    bool reachedEndOfBuffer = false;
+
+    while(!reachedEndOfBuffer) {
+        tempWordStartPos = wordStartPos;
+        tempWordLen = wordLen;
+        reachedEndOfBuffer = getPosOfNextFullWord(pBuffer,bufferSize,tempWordStartPos + wordLen,&tempWordStartPos,&tempWordLen);
+        
+        if(tempWordLen != 0) {
+            uint32_t t = tempWordStartPos - (wordStartPos + wordLen);
+            wordStartPos = tempWordStartPos;
+            wordLen = tempWordLen;
+            totalBytesLen += wordLen + t;
+        }
+    }
+
+    return bufferSize - totalBytesLen;
 }
 
 int main(int argc,char* argv[]) {
@@ -233,27 +245,5 @@ int main(int argc,char* argv[]) {
 
     const int bufferSize = 8;
     buffer = (char*)malloc(sizeof(char) * bufferSize);
-    while(!feof(file)) {
-        bufferLen = fread(buffer,sizeof(char),bufferSize,file);
-        bufferLen = reduceToLastPosOfFullCharacter(buffer,bufferLen);
-
-        if(bufferLen != bufferSize) {
-            fseek(file,-(bufferSize - bufferLen),SEEK_CUR);
-        }
-
-        if(bufferLen == 0)
-            return 0;
-
-        if(!feof(file)) {
-            uint32_t size = reduceToLastFullWord(buffer,bufferLen);
-            if(size != bufferLen) {
-                fseek(file,-(bufferLen - size),SEEK_CUR);
-                bufferLen = size;
-            }
-        }
-
-        for(int i = 0; i < bufferLen; i++) {
-            printf("%x\n",buffer[i]);
-        }
-    }
+    
 }
