@@ -129,6 +129,8 @@ void removeUTF8Accent(uint32_t* pCharacter) {
         return;
     }
 
+    // if the character is uppercase then offset to lowercase
+    // makes no difference if it isn't a letter. The result will be the unmodified character
     removeLowercaseUTF8Accent((*pCharacter) + 0x0020,&character);
     if(character != (*pCharacter)) {
         *pCharacter = character;
