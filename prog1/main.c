@@ -19,9 +19,8 @@
 
 uint32_t reduceToLastPosOfFullCharacter(uint8_t* buffer,uint32_t bufferLen) {
     uint8_t bytesRead = 0;
-    uint8_t pointer = bufferLen - 1; 
     uint8_t expectedNumberOfExtraBytes = 0;
-    for(; pointer > 0; pointer--) {    
+    for(uint8_t pointer = bufferLen - 1; pointer > 0; pointer--) {    
         bytesRead++;
         if((buffer[pointer] & BYTE_0_0_EXTRA_MASK) == BYTE_0_0_EXTRA) {
             expectedNumberOfExtraBytes = 0;
@@ -142,12 +141,10 @@ void removeUTF8Accent(uint32_t* pCharacter) {
     }
 }
 
-uint32_t lowercase(uint32_t character) {
-    if(character >= 65 && character <= 90) {
-        return character + 32;
+void lowercase(uint32_t* character) {
+    if((*character) >= 65 && (*character) <= 90) {
+        *character += 32;
     }
-
-    return character;
 }
 
 bool isSeparationCharacter(uint32_t character) {
@@ -179,42 +176,7 @@ bool isAlphanumericOrUnderscore(uint32_t character) {
     return false;
 }
 
-bool getPosOfNextFullWord(uint8_t* pBuffer,uint32_t bufferSize,uint32_t start,uint32_t* pWordStartPos,uint32_t* pWordLen) {
-    uint32_t character,i;
-    uint8_t bytesRead = 0;
-    bool insideWord = false;
-    *pWordLen = 0;
-
-    for(i = start; i < bufferSize; i += bytesRead) {
-        character = getUTF8Character(pBuffer,bufferSize,i,&bytesRead);
-        removeUTF8Accent(&character);
-        character = lowercase(character);
-
-        if(!insideWord) {
-            if(isAlphanumericOrUnderscore(character)) {
-                insideWord = true;
-                *pWordStartPos = i;
-                (*pWordLen) += bytesRead;
-            }
-        }
-        else {
-            if(isSeparationCharacter(character)) {   
-                i += bytesRead; 
-                break;
-            }
-            else{
-                (*pWordLen) += bytesRead;
-            }
-        }
-    }
-
-    return i >= bufferSize;
-}
-
 uint32_t reduceToLastFullWord(uint8_t* pBuffer,uint32_t bufferSize) {
-    // uint32_t wordStartPos = 0,wordLen = 0,totalBytesLen = 0,tempWordStartPos,tempWordLen;
-    // bool reachedEndOfBuffer = false;
-
     for(uint32_t i = bufferSize - 1;i >= 0; i--) {
         uint8_t byte = pBuffer[i];
         if((byte & BYTES_1_2_3_EXTRA_MASK) == BYTES_1_2_3_EXTRA)
@@ -242,21 +204,6 @@ uint32_t reduceToLastFullWord(uint8_t* pBuffer,uint32_t bufferSize) {
             return i;
         }
     }
-
-    // while(!reachedEndOfBuffer) {
-    //     tempWordStartPos = wordStartPos;
-    //     tempWordLen = wordLen;
-    //     reachedEndOfBuffer = getPosOfNextFullWord(pBuffer,bufferSize,tempWordStartPos + wordLen,&tempWordStartPos,&tempWordLen);
-        
-    //     if(tempWordLen != 0) {
-    //         uint32_t t = tempWordStartPos - (wordStartPos + wordLen);
-    //         wordStartPos = tempWordStartPos;
-    //         wordLen = tempWordLen;
-    //         totalBytesLen += wordLen + t;
-    //     }
-    // }
-
-    // return totalBytesLen;
 }
 
 void processBuffer(uint8_t* pBuffer,uint32_t bufferSize,uint32_t* pNumWords,uint32_t* pNumWordsWithTwoOrMoreConsonants) {
@@ -269,7 +216,7 @@ void processBuffer(uint8_t* pBuffer,uint32_t bufferSize,uint32_t* pNumWords,uint
     for(uint32_t totalBytesRead = 0; totalBytesRead < bufferSize; totalBytesRead += bytesRead) {
         character = getUTF8Character(pBuffer,bufferSize,totalBytesRead,&bytesRead);
         removeUTF8Accent(&character);
-        character = lowercase(character);
+        lowercase(&character);
 
         if(!insideWord) {
             if(isAlphanumericOrUnderscore(character)) {
@@ -301,7 +248,7 @@ void processBuffer(uint8_t* pBuffer,uint32_t bufferSize,uint32_t* pNumWords,uint
 }
 
 int main(int argc,char* argv[]) {
-    FILE* file = fopen("test.txt", "rb");
+    FILE* file = fopen("dataSet1/text4.txt", "rb");
 
     if (file == NULL) {
         printf("Error when trying to open file: %s\n","t");
@@ -309,7 +256,7 @@ int main(int argc,char* argv[]) {
         return -1;
     }
 
-    const int bufferSize = 15;
+    const int bufferSize = MAX_BUFFER_SIZE;
     uint8_t* buffer;
     uint32_t bufferLen = 0,numWords = 0,numWordsConsonants = 0,newLen = 0,tempNWords,tempNWordsConsonants;
     long moveBackAmount = 0;
@@ -336,4 +283,6 @@ int main(int argc,char* argv[]) {
     }
     
     fclose(file);
+    printf("#words: %d\n",numWords);
+    printf("#words with consonants: %d\n",numWordsConsonants);
 }
