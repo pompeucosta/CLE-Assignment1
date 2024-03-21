@@ -17,11 +17,7 @@
 #define BYTE_0_3_EXTRA_MASK 0xF8
 #define BYTES_1_2_3_EXTRA_MASK 0xC0
 
-
-char* buffer;
-uint16_t bufferLen = 0;
-
-uint32_t reduceToLastPosOfFullCharacter(char* buffer,uint32_t bufferLen) {
+uint32_t reduceToLastPosOfFullCharacter(uint8_t* buffer,uint32_t bufferLen) {
     uint8_t bytesRead = 0;
     uint8_t pointer = bufferLen - 1; 
     uint8_t expectedNumberOfExtraBytes = 0;
@@ -53,7 +49,7 @@ uint32_t reduceToLastPosOfFullCharacter(char* buffer,uint32_t bufferLen) {
     return bufferLen;
 }
 
-uint32_t getUTF8Character(char* buffer,uint32_t bufferLen,uint32_t startPos,uint8_t* bytesRead) {
+uint32_t getUTF8Character(uint8_t* buffer,uint32_t bufferLen,uint32_t startPos,uint8_t* bytesRead) {
     if(startPos >= bufferLen)
         return 0;
     
@@ -130,18 +126,18 @@ void removeLowercaseUTF8Accent(uint32_t utfCharacter,uint32_t* pConvertedCharact
     }
 }
 
-void removeUTF8Accent(uint32_t utfCharacter,uint32_t* pConvertedCharacter) {
-    uint32_t character = utfCharacter;
+void removeUTF8Accent(uint32_t* pCharacter) {
+    uint32_t character = *pCharacter;
 
-    removeLowercaseUTF8Accent(utfCharacter,&character);
-    if(character != utfCharacter) {
-        *pConvertedCharacter = character;
+    removeLowercaseUTF8Accent(*pCharacter,&character);
+    if(character != (*pCharacter)) {
+        *pCharacter = character;
         return;
     }
 
-    removeLowercaseUTF8Accent(utfCharacter + 0x0020,&character);
-    if(character != utfCharacter) {
-        *pConvertedCharacter = character;
+    removeLowercaseUTF8Accent((*pCharacter) + 0x0020,&character);
+    if(character != (*pCharacter)) {
+        *pCharacter = character;
         return;
     }
 }
@@ -183,25 +179,26 @@ bool isAlphanumericOrUnderscore(uint32_t character) {
     return false;
 }
 
-bool getPosOfNextFullWord(char* pBuffer,uint32_t bufferSize,uint32_t start,uint32_t* pWordStartPos,uint32_t* pWordLen) {
-    uint32_t character,converted,bytesRead = 0,i;
+bool getPosOfNextFullWord(uint8_t* pBuffer,uint32_t bufferSize,uint32_t start,uint32_t* pWordStartPos,uint32_t* pWordLen) {
+    uint32_t character,i;
+    uint8_t bytesRead = 0;
     bool insideWord = false;
     *pWordLen = 0;
 
     for(i = start; i < bufferSize; i += bytesRead) {
         character = getUTF8Character(pBuffer,bufferSize,i,&bytesRead);
-        converted = character;
-        removeUTF8Accent(character,&converted);
-        converted = lowercase(converted);
+        removeUTF8Accent(&character);
+        character = lowercase(character);
 
         if(!insideWord) {
-            if(isAlphanumericOrUnderscore(converted)) {
+            if(isAlphanumericOrUnderscore(character)) {
                 insideWord = true;
                 *pWordStartPos = i;
+                (*pWordLen) += bytesRead;
             }
         }
         else {
-            if(isSeparationCharacter(converted)) {   
+            if(isSeparationCharacter(character)) {   
                 i += bytesRead; 
                 break;
             }
@@ -214,24 +211,93 @@ bool getPosOfNextFullWord(char* pBuffer,uint32_t bufferSize,uint32_t start,uint3
     return i >= bufferSize;
 }
 
-uint32_t reduceToLastFullWord(char* pBuffer,uint32_t bufferSize) {
-    uint32_t wordStartPos = 0,wordLen = 0,totalBytesLen = 0,tempWordStartPos,tempWordLen;
-    bool reachedEndOfBuffer = false;
+uint32_t reduceToLastFullWord(uint8_t* pBuffer,uint32_t bufferSize) {
+    // uint32_t wordStartPos = 0,wordLen = 0,totalBytesLen = 0,tempWordStartPos,tempWordLen;
+    // bool reachedEndOfBuffer = false;
 
-    while(!reachedEndOfBuffer) {
-        tempWordStartPos = wordStartPos;
-        tempWordLen = wordLen;
-        reachedEndOfBuffer = getPosOfNextFullWord(pBuffer,bufferSize,tempWordStartPos + wordLen,&tempWordStartPos,&tempWordLen);
-        
-        if(tempWordLen != 0) {
-            uint32_t t = tempWordStartPos - (wordStartPos + wordLen);
-            wordStartPos = tempWordStartPos;
-            wordLen = tempWordLen;
-            totalBytesLen += wordLen + t;
+    for(uint32_t i = bufferSize - 1;i >= 0; i--) {
+        uint8_t byte = pBuffer[i];
+        if((byte & BYTES_1_2_3_EXTRA_MASK) == BYTES_1_2_3_EXTRA)
+            continue;
+
+        int numBytesExtra = -1;
+
+        if ((byte & BYTE_0_0_EXTRA_MASK) == BYTE_0_0_EXTRA) {
+            numBytesExtra = 0;
+        } else if ((byte & BYTE_0_1_EXTRA_MASK) == BYTE_0_1_EXTRA) {
+            numBytesExtra = 1;
+        } else if ((byte & BYTE_0_2_EXTRA_MASK) == BYTE_0_2_EXTRA) {
+            numBytesExtra = 2;
+        } else if ((byte & BYTE_0_3_EXTRA_MASK) == BYTE_0_3_EXTRA) {
+            numBytesExtra = 3;
+        }
+
+        uint32_t character = byte;
+        for(int j = 0; j < numBytesExtra; j++) {
+            character <<= 8;
+            character |= pBuffer[i + j + 1];
+        }
+
+        if(isSeparationCharacter(character)) {
+            return i;
         }
     }
 
-    return bufferSize - totalBytesLen;
+    // while(!reachedEndOfBuffer) {
+    //     tempWordStartPos = wordStartPos;
+    //     tempWordLen = wordLen;
+    //     reachedEndOfBuffer = getPosOfNextFullWord(pBuffer,bufferSize,tempWordStartPos + wordLen,&tempWordStartPos,&tempWordLen);
+        
+    //     if(tempWordLen != 0) {
+    //         uint32_t t = tempWordStartPos - (wordStartPos + wordLen);
+    //         wordStartPos = tempWordStartPos;
+    //         wordLen = tempWordLen;
+    //         totalBytesLen += wordLen + t;
+    //     }
+    // }
+
+    // return totalBytesLen;
+}
+
+void processBuffer(uint8_t* pBuffer,uint32_t bufferSize,uint32_t* pNumWords,uint32_t* pNumWordsWithTwoOrMoreConsonants) {
+    uint32_t character,consonantsChecked = 0;
+    uint8_t bytesRead = 0;
+    bool insideWord = false,wordCheckedFlag = false;
+    (*pNumWords) = 0;
+    (*pNumWordsWithTwoOrMoreConsonants) = 0;
+
+    for(uint32_t totalBytesRead = 0; totalBytesRead < bufferSize; totalBytesRead += bytesRead) {
+        character = getUTF8Character(pBuffer,bufferSize,totalBytesRead,&bytesRead);
+        removeUTF8Accent(&character);
+        character = lowercase(character);
+
+        if(!insideWord) {
+            if(isAlphanumericOrUnderscore(character)) {
+                (*pNumWords)++;
+                insideWord = true;
+                consonantsChecked = 0;
+                wordCheckedFlag = false;
+            }
+        }
+        else {
+            if(isSeparationCharacter(character)) {
+                insideWord = false;
+            }
+        }
+
+        if(insideWord && !wordCheckedFlag) {
+            if(character >= 'b' && character <= 'z' && character != 'e' && character != 'i' && character != 'o' && character != 'u') {
+                uint32_t pos = 0x01 << (character - 'b');
+                if(consonantsChecked & pos) {
+                    (*pNumWordsWithTwoOrMoreConsonants)++;
+                    wordCheckedFlag = true;
+                }
+                else {
+                    consonantsChecked |= pos;
+                }
+            }
+        }
+    }
 }
 
 int main(int argc,char* argv[]) {
@@ -243,7 +309,31 @@ int main(int argc,char* argv[]) {
         return -1;
     }
 
-    const int bufferSize = 8;
-    buffer = (char*)malloc(sizeof(char) * bufferSize);
+    const int bufferSize = 15;
+    uint8_t* buffer;
+    uint32_t bufferLen = 0,numWords = 0,numWordsConsonants = 0,newLen = 0,tempNWords,tempNWordsConsonants;
+    long moveBackAmount = 0;
+
+    buffer = (uint8_t*)malloc(sizeof(uint8_t) * bufferSize);
+    while(!feof(file)) {
+        bufferLen = fread(buffer,1,bufferSize,file);
+        if(!feof(file)) {
+            newLen = reduceToLastPosOfFullCharacter(buffer,bufferLen);
+            newLen = reduceToLastFullWord(buffer,newLen);
+        }
+        else {
+            newLen = bufferLen;
+        }
+
+        processBuffer(buffer,newLen,&tempNWords,&tempNWordsConsonants);
+        numWords += tempNWords;
+        numWordsConsonants += tempNWordsConsonants;
+        moveBackAmount = bufferLen - newLen;
+        if(!feof(file) && (fseek(file,-moveBackAmount,SEEK_CUR) != 0)) {
+            perror("");
+            break;
+        }
+    }
     
+    fclose(file);
 }
