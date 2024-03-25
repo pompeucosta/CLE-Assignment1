@@ -39,68 +39,75 @@ int setFiles(char** files,uint16_t count) {
     return 0;
 }
 
-int fillBuffer(uint8_t* buffer,uint32_t bufferSize,uint16_t* fileIndex,uint32_t* newBufferSize) {
+int signalAndUnlock() {
+    isReading = false;
     int result = 0;
+    if(pthread_cond_signal(&notReading) != 0)
+        result = -1;
+
+    if(pthread_mutex_unlock(&accessCR) != 0)
+        result = -2;
+
+    return result;
+}
+
+int fillBuffer(uint8_t* buffer,uint32_t bufferSize,uint16_t* fileIndex,uint32_t* newBufferSize) {
     if(pthread_mutex_lock(&accessCR) != 0) {
-        result = -3;
+        return -3;
     }
 
     pthread_once(&init,initialization);
 
-    if(result == 0) {
-        while(isReading) {
-            if(pthread_cond_wait(&notReading,&accessCR) != 0) {
-                result = -4;
+    while(isReading) {
+        if(pthread_cond_wait(&notReading,&accessCR) != 0) {
+            if(pthread_mutex_unlock(&accessCR) != 0) {
+                return -6;
+            }
+
+            return -4;
+        }
+    }
+
+    isReading = true;
+
+    if(currentFile == NULL) {
+        signalAndUnlock();
+        return -2;
+    }
+
+    if(data.current == data.fileCount) {
+        signalAndUnlock();
+        return EOF;
+    }
+
+    int bytesRead = fread(buffer,sizeof(uint8_t),bufferSize,currentFile);
+    *fileIndex = data.current;
+    if(feof(currentFile)) {
+        fclose(currentFile);
+        data.current++;
+        if(data.current != data.fileCount) {
+            if((currentFile = fopen(data.files[data.current],"rb")) == NULL) {
+                signalAndUnlock();
+                return -2;
             }
         }
 
-        isReading = true;
+        *newBufferSize = bytesRead;
+    }
+    else {
+        uint32_t newLen = reduceToLastPosOfFullCharacter(buffer,bytesRead);
+        newLen = reduceToLastFullWord(buffer,newLen);
 
-        if(currentFile == NULL && result == 0) {
-            result = -2;
+        long moveBackAmount = bytesRead - newLen;
+        if(fseek(currentFile,-moveBackAmount,SEEK_CUR) != 0) {
+            signalAndUnlock();
+            return -7;
         }
 
-        if(data.current == data.fileCount && result == 0) {
-            result = EOF;
-        }
-
-        if(result == 0) {
-            int bytesRead = fread(buffer,sizeof(uint8_t),bufferSize,currentFile);
-            *fileIndex = data.current;
-            if(feof(currentFile)) {
-                fclose(currentFile);
-                data.current++;
-                if(data.current != data.fileCount) {
-                    if((currentFile = fopen(data.files[data.current],"rb")) == NULL) {
-                        result = -2;
-                    }
-                }
-
-                *newBufferSize = bytesRead;
-            }
-            else {
-                uint32_t newLen = reduceToLastPosOfFullCharacter(buffer,bytesRead);
-                newLen = reduceToLastFullWord(buffer,newLen);
-
-                long moveBackAmount = bytesRead - newLen;
-                if(fseek(currentFile,-moveBackAmount,SEEK_CUR) != 0) {
-                    result = -7;
-                }
-
-                *newBufferSize = newLen;
-            }
-        }
-
-        isReading = false;
+        *newBufferSize = newLen;
     }
 
-    if(pthread_cond_signal(&notReading) != 0) {
-        result = -5;
-    }
-
-    if(pthread_mutex_unlock(&accessCR) != 0) {
-        result = -6;
-    }
+   signalAndUnlock();
     
-    return result;
+    return 0;
 }
