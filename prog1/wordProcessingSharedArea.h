@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-void setFiles(char** files,uint16_t count);
+int setFiles(char** files,uint16_t count);
 
-int fillBuffer(uint8_t* buffer,uint32_t bufferSize,uint16_t* fileIndex);
+int fillBuffer(uint8_t* buffer,uint32_t bufferSize,uint16_t* fileIndex,uint32_t* newBufferSize);
 
 #endif
