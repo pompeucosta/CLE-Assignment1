@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <libgen.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <unistd.h>
 #include "wordProcessing.h"
 #include "wordProcessingSharedArea.h"
 
@@ -94,22 +96,56 @@ void* processFiles(void* params) {
     pthread_exit(&statusWorkers[id]);
 }
 
+void printUsage(char* progName) {
+    printf ("\nSynopsis: %s [FILE PATHS] [OPTIONS]\n"
+           "  OPTIONS:\n"
+           "  -t nThreads  --- set the number of threads to be created (default: 1)\n"
+           "  -h           --- print this help\n", progName);
+}
+
 int main(int argc,char* argv[]) {
-    uint16_t count = 5;
-    fileCount = 5;
-    char* files[count];
-    files[0] = "dataSet1/text0.txt";
-    files[1] = "dataSet1/text1.txt";
-    files[2] = "dataSet1/text2.txt";
-    files[3] = "dataSet1/text3.txt";
-    files[4] = "dataSet1/text4.txt";
-    int code = setFiles(files,count);
+    int option;
+    uint32_t numWorkers = 1;
+
+    while((option = getopt(argc,argv,"t:h")) != -1) {
+        switch (option)
+        {
+            case 't':
+                if(atoi(optarg) <= 0) {
+                    fprintf(stderr,"Number of workers must be positive\n");
+                    printUsage(basename(argv[0]));
+                    return EXIT_FAILURE;
+                }
+                numWorkers = atoi(optarg);
+                break;
+            case 'h':
+                printUsage(basename(argv[0]));
+                return EXIT_SUCCESS;
+            case '?':
+                fprintf(stderr,"Invalid option\n");
+                printUsage(basename(argv[0]));
+                return EXIT_FAILURE;
+        }
+    }
+
+    uint16_t fileCount = argc - optind;
+    if(fileCount == 0) {
+        fprintf(stderr,"Please provide files\n");
+        printUsage(basename(argv[0]));
+    }
+
+    char* files[fileCount];
+    int j = 0;
+    for(int i = optind; i < argc; i++,j++) {
+        files[j] = argv[i];
+    }
+
+    int code = setFiles(files,fileCount);
     if(code < 0) {
         perror("Failed to set files");
         return EXIT_FAILURE;
     }
 
-    const uint32_t numWorkers = 2;
     pthread_t* workers;
 
     if((workers = malloc(numWorkers * sizeof(pthread_t))) == NULL ||
@@ -120,7 +156,7 @@ int main(int argc,char* argv[]) {
 
     for(int i = 0; i < numWorkers; i++) {
         statusWorkers[i].workerId = i;
-        statusWorkers[i].results = malloc(count * sizeof(fileResults));
+        statusWorkers[i].results = malloc(fileCount * sizeof(fileResults));
     }
 
 
@@ -131,8 +167,8 @@ int main(int argc,char* argv[]) {
         }
     }
 
-    fileResults results[count];
-    for(int i = 0; i < count; i++) {
+    fileResults results[fileCount];
+    for(int i = 0; i < fileCount; i++) {
         results[i].numWords = 0;
         results[i].numWordsWithConsonants = 0;
     }
@@ -150,13 +186,13 @@ int main(int argc,char* argv[]) {
             exit(EXIT_FAILURE);
         }
 
-        for(int j = 0; j < count; j++) {
+        for(int j = 0; j < fileCount; j++) {
             results[j].numWords += w.results[j].numWords;
             results[j].numWordsWithConsonants += w.results[j].numWordsWithConsonants;
         }
     }
 
-    for(int i = 0; i < count; i++) {
+    for(int i = 0; i < fileCount; i++) {
         printf("File: %s\n",files[i]);
         printf("#words: %d\n",results[i].numWords);
         printf("#words with consonants: %d\n\n",results[i].numWordsWithConsonants);
