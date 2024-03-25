@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <time.h>
 #include "wordProcessing.h"
 #include "wordProcessingSharedArea.h"
 
@@ -103,6 +104,24 @@ void printUsage(char* progName) {
            "  -h           --- print this help\n", progName);
 }
 
+/**
+ *  \brief Get the process time that has elapsed since last call of this time.
+ *
+ *  \return process elapsed time
+ */
+
+double get_delta_time(void)
+{
+    static struct timespec t0, t1;
+
+    t0 = t1;
+    if(clock_gettime (CLOCK_MONOTONIC, &t1) != 0) {
+        perror ("clock_gettime");
+        exit(1);
+    }
+    return (double) (t1.tv_sec - t0.tv_sec) + 1.0e-9 * (double) (t1.tv_nsec - t0.tv_nsec);
+}
+
 int main(int argc,char* argv[]) {
     int option;
     uint32_t numWorkers = 1;
@@ -159,6 +178,7 @@ int main(int argc,char* argv[]) {
         statusWorkers[i].results = malloc(fileCount * sizeof(fileResults));
     }
 
+    (void) get_delta_time();
 
     for(int i = 0; i < numWorkers; i++) {
         if((pthread_create(&workers[i],NULL,processFiles,&statusWorkers[i])) != 0) {
@@ -197,6 +217,8 @@ int main(int argc,char* argv[]) {
         printf("#words: %d\n",results[i].numWords);
         printf("#words with consonants: %d\n\n",results[i].numWordsWithConsonants);
     }
+
+    printf("Elapsed time = %.6fs \n",get_delta_time());
 
     exit(EXIT_SUCCESS);
 }
