@@ -4,10 +4,17 @@
 #include "wordProcessingSharedArea.h"
 #include "wordProcessing.h"
 
+/**
+ * @struct fileData
+ * @brief Structure to hold file data, including paths, count, and the current file index.
+ *
+ * This structure is used to manage a collection of file paths, keep track of the total number of files,
+ * and indicate the current file being processed by an algorithm.
+ */
 typedef struct {
-    uint16_t current;
-    char** files;
-    uint16_t fileCount;
+    uint16_t current; ///< Index of the current file being read by the algorithm.
+    char** files; ///< Array of file paths.
+    uint16_t fileCount; ///< Total number of files.
 } fileData;
 
 fileData data;

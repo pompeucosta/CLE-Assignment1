@@ -11,20 +11,29 @@
 
 #define MAX_BUFFER_SIZE 8000
 
+/// @brief Results of processing a file
+/// @struct fileResults
 typedef struct {
-    uint32_t numWords;
-    uint32_t numWordsWithConsonants;
+    uint32_t numWords; ///< The number of words
+    uint32_t numWordsWithConsonants; ///< The number of words with at least two equal consonants
 } fileResults;
 
+/// @brief Parameters of the workers
+/// @struct workerParams
 typedef struct {
-    uint32_t workerId;
-    fileResults* results;
-    uint32_t returnCode;
+    uint32_t workerId; ///< The id of the worker
+    fileResults* results; ///< An array of results calculated by the worker 
+    uint32_t returnCode; ///< The return code of the worker
 } workerParams;
 
 workerParams* statusWorkers;
 uint32_t fileCount;
 
+/// @brief Processes a buffer to calculate the amount of words and the amount of words with at least two equal consonants
+/// @param pBuffer The buffer to read from
+/// @param bufferSize The size of the buffer
+/// @param pNumWords The number of words
+/// @param pNumWordsWithTwoOrMoreConsonants The number of words with at least two equal consonants
 void processBuffer(uint8_t* pBuffer,uint32_t bufferSize,uint32_t* pNumWords,uint32_t* pNumWordsWithTwoOrMoreConsonants) {
     uint32_t character,consonantsChecked = 0;
     uint8_t bytesRead = 0;
@@ -66,6 +75,8 @@ void processBuffer(uint8_t* pBuffer,uint32_t bufferSize,uint32_t* pNumWords,uint
     }
 }
 
+/// @brief Worker function to process the files
+/// @param params Pointer to application defined worker identification
 void* processFiles(void* params) {
     uint32_t id = *((uint32_t*) params);
     for(int i = 0; i < fileCount; i++) {
@@ -97,6 +108,9 @@ void* processFiles(void* params) {
     pthread_exit(&statusWorkers[id]);
 }
 
+
+/// @brief Print command usage
+/// @param progName string with the name of the program
 void printUsage(char* progName) {
     printf ("\nSynopsis: %s [FILE PATHS] [OPTIONS]\n"
            "  OPTIONS:\n"
@@ -104,12 +118,8 @@ void printUsage(char* progName) {
            "  -h           --- print this help\n", progName);
 }
 
-/**
- *  \brief Get the process time that has elapsed since last call of this time.
- *
- *  \return process elapsed time
- */
-
+/// @brief Get the process time that has elapsed since last call of this time.
+/// @return process elapsed time
 double get_delta_time(void)
 {
     static struct timespec t0, t1;
@@ -122,6 +132,10 @@ double get_delta_time(void)
     return (double) (t1.tv_sec - t0.tv_sec) + 1.0e-9 * (double) (t1.tv_nsec - t0.tv_nsec);
 }
 
+/// @brief Main thread
+/// @param argc Number of arguments from the command line
+/// @param argv list of arguments from the command line
+/// @return status of operation
 int main(int argc,char* argv[]) {
     int option;
     uint32_t numWorkers = 1;
@@ -181,7 +195,7 @@ int main(int argc,char* argv[]) {
     (void) get_delta_time();
 
     for(int i = 0; i < numWorkers; i++) {
-        if((pthread_create(&workers[i],NULL,processFiles,&statusWorkers[i])) != 0) {
+        if((pthread_create(&workers[i],NULL,processFiles,&statusWorkers[i].workerId)) != 0) {
             perror("error creating thread");
             exit(EXIT_FAILURE);
         }
