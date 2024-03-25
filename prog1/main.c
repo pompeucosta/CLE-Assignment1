@@ -105,7 +105,7 @@ void* processFiles(void* params) {
     }
 
     free(buffer);
-    pthread_exit(&statusWorkers[id]);
+    pthread_exit(&statusWorkers[id].workerId);
 }
 
 
@@ -214,7 +214,8 @@ int main(int argc,char* argv[]) {
             exit(EXIT_FAILURE);
         }
 
-        workerParams w = *(workerParams*)status;
+        uint32_t wId = *(uint32_t*)status;
+        workerParams w = statusWorkers[wId];
         if(w.returnCode == EXIT_FAILURE) {
             fprintf(stderr,"thread returned in failure\n");
             exit(EXIT_FAILURE);
