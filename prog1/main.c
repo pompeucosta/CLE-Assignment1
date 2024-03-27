@@ -11,29 +11,8 @@
 
 #define MAX_BUFFER_SIZE 8000
 
-/**
- * @brief Results of processing a file
- *
- * @struct fileResults
- */
-typedef struct {
-    uint32_t numWords; ///< The number of words
-    uint32_t numWordsWithConsonants; ///< The number of words with at least two equal consonants
-} fileResults;
-
-/**
- * @brief Data of the workers
- *
- * @struct workerData
- */
-typedef struct {
-    uint32_t workerId; ///< The id of the worker
-    fileResults* results; ///< An array of results calculated by the worker 
-    uint32_t returnCode; ///< The return code of the worker
-} workerData;
-
-workerData* statusWorkers;
 uint32_t fileCount;
+uint32_t* statusWorkers;
 
 /**
  * @brief Processes a buffer to calculate the amount of words and the amount of words with at least two equal consonants.
@@ -92,33 +71,32 @@ void processBuffer(uint8_t* pBuffer,uint32_t bufferSize,uint32_t* pNumWords,uint
  */
 void* processFiles(void* params) {
     uint32_t id = *((uint32_t*) params);
-    for(int i = 0; i < fileCount; i++) {
-        statusWorkers[id].results[i].numWords = 0;
-        statusWorkers[id].results[i].numWordsWithConsonants = 0;
-    }
 
     const int bufferSize = MAX_BUFFER_SIZE;
     uint8_t* buffer;
-    uint32_t tempNWords,tempNWordsConsonants;
+    uint32_t nWords,nWordsConsonants;
     uint32_t bufferLen;
     int code;
-    uint16_t fileIndex;
+    uint16_t fileID;
     buffer = (uint8_t*)malloc(sizeof(uint8_t) * bufferSize);
-    while((code = fillBuffer(buffer,bufferSize,&fileIndex,&bufferLen)) == 0) {
-        processBuffer(buffer,bufferLen,&tempNWords,&tempNWordsConsonants);
-        statusWorkers[id].results[fileIndex].numWords += tempNWords;
-        statusWorkers[id].results[fileIndex].numWordsWithConsonants += tempNWordsConsonants;
+    while((code = fillBuffer(buffer,bufferSize,&fileID,&bufferLen)) == 0) {
+        processBuffer(buffer,bufferLen,&nWords,&nWordsConsonants);
+        if(savePartialResults(fileID,nWords,nWordsConsonants) != 0) {
+            perror("failed to save partial results");
+            statusWorkers[id] = EXIT_FAILURE;
+            pthread_exit(&statusWorkers[id]);
+        }
     }
 
     if(code < -1) {
-        statusWorkers[id].returnCode = EXIT_FAILURE;
+        statusWorkers[id] = EXIT_FAILURE;
     }
     else {
-        statusWorkers[id].returnCode = EXIT_SUCCESS;
+        statusWorkers[id] = EXIT_SUCCESS;
     }
 
     free(buffer);
-    pthread_exit(&statusWorkers[id].workerId);
+    pthread_exit(&statusWorkers[id]);
 }
 
 
@@ -195,8 +173,7 @@ int main(int argc,char* argv[]) {
         files[j] = argv[i];
     }
 
-    int code = setFiles(files,fileCount);
-    if(code < 0) {
+    if(setFiles(files,fileCount) < 0) {
         perror("Failed to set files");
         return EXIT_FAILURE;
     }
@@ -204,29 +181,23 @@ int main(int argc,char* argv[]) {
     pthread_t* workers;
 
     if((workers = malloc(numWorkers * sizeof(pthread_t))) == NULL ||
-        (statusWorkers = malloc(numWorkers * sizeof(workerData))) == NULL) {
+        (statusWorkers = malloc(numWorkers * sizeof(uint32_t))) == NULL) {
             perror("error allocation memory for threads");
             exit(EXIT_FAILURE);
         }
 
-    for(int i = 0; i < numWorkers; i++) {
-        statusWorkers[i].workerId = i;
-        statusWorkers[i].results = malloc(fileCount * sizeof(fileResults));
+
+    for(uint32_t i = 0; i < numWorkers; i++) {
+        statusWorkers[i] = i;
     }
 
     (void) get_delta_time();
 
     for(int i = 0; i < numWorkers; i++) {
-        if((pthread_create(&workers[i],NULL,processFiles,&statusWorkers[i].workerId)) != 0) {
+        if((pthread_create(&workers[i],NULL,processFiles,&statusWorkers[i])) != 0) {
             perror("error creating thread");
             exit(EXIT_FAILURE);
         }
-    }
-
-    fileResults results[fileCount];
-    for(int i = 0; i < fileCount; i++) {
-        results[i].numWords = 0;
-        results[i].numWordsWithConsonants = 0;
     }
 
     void* status;
@@ -236,17 +207,16 @@ int main(int argc,char* argv[]) {
             exit(EXIT_FAILURE);
         }
 
-        uint32_t wId = *(uint32_t*)status;
-        workerData w = statusWorkers[wId];
-        if(w.returnCode == EXIT_FAILURE) {
-            fprintf(stderr,"thread returned in failure\n");
+        uint32_t code = *(uint32_t*)status;
+        if(code == EXIT_FAILURE) {
+            fprintf(stderr,"thread exited in failure\n");
             exit(EXIT_FAILURE);
         }
+    }
 
-        for(int j = 0; j < fileCount; j++) {
-            results[j].numWords += w.results[j].numWords;
-            results[j].numWordsWithConsonants += w.results[j].numWordsWithConsonants;
-        }
+    if(results == NULL) {
+        fprintf(stderr,"A problem ocurred when trying to access the results\n");
+        exit(EXIT_FAILURE);
     }
 
     for(int i = 0; i < fileCount; i++) {
