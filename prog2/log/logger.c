@@ -14,7 +14,7 @@ const char* logLevelToString(LogLevel level) {
     }
 }
 
-LogLevel globalLogLevel = LOG_INFO;
+LogLevel globalLogLevel = LOG_DEBUG;
 
 void log_message(LogLevel level, const char *format, ...) {
     if (level < globalLogLevel) return;
