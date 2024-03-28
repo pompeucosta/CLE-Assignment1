@@ -15,20 +15,36 @@ bool isGloballySorted(int *data, int size) {
     return true; // Sequence is fully sorted
 }
 
-void redistributeWork(SharedArea *shrdArea) {
-    int subSequenceSize = shrdArea->size / shrdArea->numWorkers;
-    for (int i = 0; i < shrdArea->numWorkers; i++) {
-        shrdArea->startIndices[i] = i * subSequenceSize;
-        shrdArea->lengths[i] = (i == shrdArea->numWorkers - 1) ? 
-                               (shrdArea->size - shrdArea->startIndices[i]) :
-                               subSequenceSize;
-        log_message(LOG_DEBUG, "Redistributed: Worker %d, StartIndex: %d, Length: %d", i, shrdArea->startIndices[i], shrdArea->lengths[i]);
+bool isPowerOfTwo(int n) {
+    return (n != 0) && ((n & (n - 1)) == 0);
+}
+
+void bitonicMerge(SharedArea *shrdArea, int start, int count, bool ascending) {
+    if (count < 2) return; // Base case: single element is already sorted
+
+    int k = count / 2;
+    for (int i = start; i < start + k; i++) {
+        if ((shrdArea->data[i] > shrdArea->data[i + k]) == ascending) {
+            // Swap elements if not in correct order
+            int temp = shrdArea->data[i];
+            shrdArea->data[i] = shrdArea->data[i + k];
+            shrdArea->data[i + k] = temp;
+        }
     }
+    bitonicMerge(shrdArea, start, k, ascending);
+    bitonicMerge(shrdArea, start + k, k, ascending);
 }
 
 void* Tdistributor_function(void* arg) {
     SharedArea *shrdArea = (SharedArea*) arg;
+    int numberOfWorkers = shrdArea->numWorkers;
+
     log_message(LOG_INFO, "Tdistributor thread started. Reading file: %s", shrdArea->fileName);
+
+    if (!isPowerOfTwo(shrdArea->size)) {
+        log_message(LOG_ERROR, "The number of integers (%d) is not a power of two.", shrdArea->size);
+        return NULL;
+    }
 
     FILE *filePtr = fopen(shrdArea->fileName, "rb");
     if (filePtr == NULL) {
@@ -45,56 +61,44 @@ void* Tdistributor_function(void* arg) {
     fclose(filePtr);
     log_message(LOG_INFO, "Successfully read %d integers from the file %s into the shared area", shrdArea->size, shrdArea->fileName);
 
-    // Initial distribution of work
-    redistributeWork(shrdArea);
+    for (int currSize = 2; currSize <= shrdArea->size; currSize *= 2) {
+        for (int i = 0; i < shrdArea->size; i += currSize) {
+            int subSequenceSize = currSize / numberOfWorkers;
 
-    // Signal worker threads that they can start processing
-    pthread_mutex_lock(&shrdArea->mutex);
-    shrdArea->ready = 1;
-    pthread_cond_broadcast(&shrdArea->condVar);
-    pthread_mutex_unlock(&shrdArea->mutex);
-    log_message(LOG_INFO, "Initial work distributed, and worker threads signaled to start.");
+            // Determine sorting directions for sub-sequences
+            bool ascending = (i / currSize) % 2 == 0;
 
-    // Wait for initial sorting to complete
-    pthread_mutex_lock(&shrdArea->mutex);
-    while (shrdArea->completedWorkers < shrdArea->numWorkers) {
-        pthread_cond_wait(&shrdArea->allDone, &shrdArea->mutex);
-    }
-    pthread_mutex_unlock(&shrdArea->mutex);
+            for (int worker = 0; worker < numberOfWorkers; ++worker) {
+                int index = i + worker * subSequenceSize;
+                bool sortOrder = (worker % 2 == 0) ? ascending : !ascending;
 
-    // Redistribution loop
-    while (!isGloballySorted(shrdArea->data, shrdArea->size)) {
-        log_message(LOG_DEBUG, "Sequence not globally sorted, preparing to redistribute work.");
+                pthread_mutex_lock(&shrdArea->mutex);
+                shrdArea->startIndices[worker] = index;
+                shrdArea->lengths[worker] = subSequenceSize;
+                shrdArea->sortOrder[worker] = sortOrder ? 1 : 0; // Adjusted for simplicity
+                shrdArea->ready += 1; // Ready is now a count of ready workers, not a boolean.
+                pthread_cond_broadcast(&shrdArea->condVar); // Signal all worker threads.
+                pthread_mutex_unlock(&shrdArea->mutex);
+            }
 
-        // Reset completion flag and ready flag
-        pthread_mutex_lock(&shrdArea->mutex);
-        shrdArea->completedWorkers = 0;
-        shrdArea->ready = 0;
-        pthread_mutex_unlock(&shrdArea->mutex);
+            // Wait for sorting to complete
+            pthread_mutex_lock(&shrdArea->mutex);
+            while (shrdArea->completedWorkers < numberOfWorkers) {
+                pthread_cond_wait(&shrdArea->allDone, &shrdArea->mutex);
+            }
 
-        // Recalculate work distribution
-        redistributeWork(shrdArea);
-
-        // Signal workers for next round of sorting
-        pthread_mutex_lock(&shrdArea->mutex);
-        shrdArea->ready = 1;
-        pthread_cond_broadcast(&shrdArea->condVar);
-        pthread_mutex_unlock(&shrdArea->mutex);
-
-        // Wait for this round of sorting to complete
-        pthread_mutex_lock(&shrdArea->mutex);
-        while (shrdArea->completedWorkers < shrdArea->numWorkers) {
-            pthread_cond_wait(&shrdArea->allDone, &shrdArea->mutex);
+            bitonicMerge(shrdArea, i, currSize, ascending);
+            shrdArea->completedWorkers = 0; // Reset for the next iteration
+            shrdArea->ready = 0; // Reset ready status
+            pthread_mutex_unlock(&shrdArea->mutex);
         }
-        pthread_mutex_unlock(&shrdArea->mutex);
     }
 
-    // All data sorted, signal workers to exit
+    // Signal workers to exit after completion
     pthread_mutex_lock(&shrdArea->mutex);
     shrdArea->exitFlag = 1;
     pthread_cond_broadcast(&shrdArea->condVar);
     pthread_mutex_unlock(&shrdArea->mutex);
-    log_message(LOG_INFO, "Sequence fully sorted, signaling worker threads to exit.");
-
+    
     return NULL;
 }

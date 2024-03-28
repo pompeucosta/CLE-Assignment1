@@ -17,6 +17,7 @@ typedef struct {
     pthread_cond_t allDone;     // Distributor waits on this until all workers are done
     int ready;                  // Flag to indicate readiness for workers
     int exitFlag;
+    int *sortOrder;
 } SharedArea;
 
 void shrdArea_init(SharedArea *sa, int size, int numWorkers);

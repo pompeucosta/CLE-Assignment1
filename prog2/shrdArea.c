@@ -34,6 +34,17 @@ void shrdArea_init(SharedArea *sa, int size, int numWorkers) {
         free(sa->startIndices);
         return;
     }
+
+    sa->sortOrder = malloc(numWorkers * sizeof(int));
+    if (sa->sortOrder == NULL) {
+        log_message(LOG_ERROR, "Failed to allocate memory for sort order");
+        // Free previously allocated memory
+        if (sa->startIndices != NULL) free(sa->startIndices);
+        if (sa->lengths != NULL) free(sa->lengths);
+        if (sa->data != NULL) free(sa->data);
+        return;
+    }
+
     log_message(LOG_INFO, "Shared area initialized successfully");
 }
 
@@ -47,6 +58,7 @@ void shrdArea_destroy(SharedArea *sa) {
     if (sa->data != NULL) free(sa->data);
     if (sa->startIndices != NULL) free(sa->startIndices);
     if (sa->lengths != NULL) free(sa->lengths);
+    if (sa->sortOrder != NULL) free(sa->sortOrder);
+    
     log_message(LOG_INFO, "Shared area destroyed and resources freed");
 }
-
