@@ -10,10 +10,14 @@
 #include <stdbool.h>
 
 /**
-* \brief Get the process time that has elapsed since last call of this time.
-*
-* \return process elapsed time
-*/
+ * @brief Calculates the elapsed time in seconds since the last call to this function.
+ * 
+ * Uses static variables to store the last time this function was called and calculates
+ * the difference in time between calls. Intended to measure performance or processing
+ * durations.
+ *
+ * @return The elapsed time in seconds as a double.
+ */
 static double get_delta_time(void)
 {
     static struct timespec t0, t1;
@@ -28,6 +32,16 @@ static double get_delta_time(void)
         1.0e-9 * (double) (t1.tv_nsec - t0.tv_nsec);
 }
 
+/**
+ * @brief Checks if an array of integers is sorted in non-decreasing order.
+ *
+ * Iterates through the given array to determine if each element is less than
+ * or equal to the next element, indicating the array is sorted.
+ *
+ * @param array Pointer to the first element of the array to be checked.
+ * @param size The number of elements in the array.
+ * @return true if the array is sorted, false otherwise.
+ */
 bool isSorted(int *array, int size) {
     for (int i = 0; i < size - 1; i++) {
         if (array[i] > array[i + 1]) {
@@ -37,6 +51,13 @@ bool isSorted(int *array, int size) {
     return true;
 }
 
+/**
+ * @brief Main thread
+ *
+ * @param argc Number of arguments from the command line.
+ * @param argv List of arguments from the command line.
+ * @return Status of the operation.
+ */
 int main(int argc, char **argv)
 {
     log_message(LOG_INFO, "Application started");
@@ -112,7 +133,6 @@ int main(int argc, char **argv)
         workerArgs[i].workerIndex = i;
         if (pthread_create(&workerThreads[i], NULL, Tworker_function, (void*)&workerArgs[i])) {
             log_message(LOG_ERROR, "Failed to create worker thread %d", i);
-            // Handle error appropriately
         }
     }
 
@@ -122,6 +142,7 @@ int main(int argc, char **argv)
     }
 
     log_message(LOG_DEBUG, "Waiting for Tdistributor thread to complete");
+    
     // Wait for the thread to finish
     pthread_join(tdistributorThread, NULL);
     log_message(LOG_INFO, "Tdistributor thread has completed");

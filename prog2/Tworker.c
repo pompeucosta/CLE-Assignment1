@@ -5,7 +5,6 @@
 #include <pthread.h>
 #include <stdbool.h>
 
-
 void sort(int *array, int start, int length, bool ascending) {
     int end = start + length;
     for (int i = start; i < end - 1; ++i) {

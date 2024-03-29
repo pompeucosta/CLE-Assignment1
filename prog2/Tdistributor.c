@@ -6,21 +6,12 @@
 #include <pthread.h>
 #include <stdbool.h>
 
-bool isGloballySorted(int *data, int size) {
-    for (int i = 0; i < size - 1; i++) {
-        if (data[i] > data[i + 1]) {
-            return false; // Sequence is not fully sorted
-        }
-    }
-    return true; // Sequence is fully sorted
-}
-
 bool isPowerOfTwo(int n) {
     return (n != 0) && ((n & (n - 1)) == 0);
 }
 
 void bitonicMerge(SharedArea *shrdArea, int start, int count, bool ascending) {
-    if (count < 2) return; // Base case: single element is already sorted
+    if (count < 2) return;
 
     int k = count / 2;
     for (int i = start; i < start + k; i++) {
@@ -75,8 +66,8 @@ void* Tdistributor_function(void* arg) {
                 pthread_mutex_lock(&shrdArea->mutex);
                 shrdArea->startIndices[worker] = index;
                 shrdArea->lengths[worker] = subSequenceSize;
-                shrdArea->sortOrder[worker] = sortOrder ? 1 : 0; // Adjusted for simplicity
-                shrdArea->ready += 1; // Ready is now a count of ready workers, not a boolean.
+                shrdArea->sortOrder[worker] = sortOrder ? 1 : 0;
+                shrdArea->ready += 1;
                 pthread_cond_broadcast(&shrdArea->condVar); // Signal all worker threads.
                 pthread_mutex_unlock(&shrdArea->mutex);
             }

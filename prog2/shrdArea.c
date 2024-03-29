@@ -2,7 +2,6 @@
 #include <stdlib.h> 
 #include "log/logger.h"
 
-
 void shrdArea_init(SharedArea *sa, int size, int numWorkers) {
     log_message(LOG_DEBUG, "Initializing shared area with size: %d integers", size);
     
@@ -27,6 +26,7 @@ void shrdArea_init(SharedArea *sa, int size, int numWorkers) {
         free(sa->data);
         return;
     }
+
     sa->lengths = malloc(numWorkers * sizeof(int));
     if (sa->lengths == NULL) {
         log_message(LOG_ERROR, "Failed to allocate memory for lengths");
@@ -47,7 +47,6 @@ void shrdArea_init(SharedArea *sa, int size, int numWorkers) {
 
     log_message(LOG_INFO, "Shared area initialized successfully");
 }
-
 
 void shrdArea_destroy(SharedArea *sa) {
     log_message(LOG_DEBUG, "Destroying shared area and freeing resources");
